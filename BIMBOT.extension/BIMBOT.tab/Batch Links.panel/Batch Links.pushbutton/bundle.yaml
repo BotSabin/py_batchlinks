@@ -1,0 +1,13 @@
+title: BIM Link Manager
+tooltip: |
+  Batch manage Revit links.
+
+  Features:
+  - Load multiple RVT links
+  - Load multiple IFC links
+  - Reload selected links
+  - Unload For Me
+  - Unload For All
+  - Multi-select workflow
+
+author: Sabin Bot

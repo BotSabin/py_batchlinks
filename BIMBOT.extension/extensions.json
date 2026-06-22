@@ -1,0 +1,11 @@
+[
+  {
+    "id": "BIMBOT",
+    "name": "BIMBOT",
+    "description": "pyRevit extension with IFC and DWG tools for linking, filtering, analyzing IFC, and converting DWG.",
+    "author": "BIMBOT Team",
+    "version": "1.0.0",
+    "repo_url": "https://github.com/your-org/your-repo",
+    "extension_path": "BIMBOT.extension"
+  }
+]
