@@ -11,3 +11,7 @@ tooltip: |
   - Multi-select workflow
 
 author: Sabin Bot
+description: Advanced batch management tool for Revit links (RVT and IFC). Streamline your link workflows with multi-select capabilities and advanced unload options.
+version: 1.0.0
+min-revit-version: 2021
+ui-tooltip-enabled: true
