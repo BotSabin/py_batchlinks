@@ -1,12 +1,4 @@
-{
-    "default_enabled": "False",
-    "type": "extension",
-    "rocket_mode_compatible": "True",
-    "name": "botpy",
-    "description": "links tools",
-    "author": "pyb",
-    "author_profile": "",
-    "url": "https://github.com/BotSabin/py_batchlinks",
-    "website": "",
-    "dependencies": []
-}
+type: extension
+name: BIM Batch Links
+author: pybot
+description: Tools for batch link management in Revit
