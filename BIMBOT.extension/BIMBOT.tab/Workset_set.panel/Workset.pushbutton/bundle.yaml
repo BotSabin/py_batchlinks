@@ -1,0 +1,21 @@
+title: BIM Workset Manager
+tooltip: |
+  BIM Workset Manager
+
+  Features:
+  - Move elements to correct worksets
+  - Use current Revit selection
+  - Use current active view
+  - Select a specific plan or view
+  - Use elements inside a Scope Box
+  - Build Category + Contains Text rules
+  - Different worksets for different element types
+  - Report Only mode before moving elements
+  - Detailed pyRevit output report
+
+author: Sabin Bot
+description: Advanced BIM workset management tool for Revit. Move elements to the correct worksets using selection, active view, selected views, Scope Boxes, and Category + Contains Text rules.
+version: 1.0.0
+min-revit-version: 2021
+ui-tooltip-enabled: true
+highlight: new

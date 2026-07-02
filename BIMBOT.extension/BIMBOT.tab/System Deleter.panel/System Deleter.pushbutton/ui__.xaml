@@ -1,0 +1,437 @@
+<Window
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="BIM Workset Manager"
+    Width="2000"
+    Height="820"
+    MinWidth="1050"
+    MinHeight="680"
+    WindowStartupLocation="CenterScreen"
+    ResizeMode="CanResize"
+    Background="#F3F6FA">
+
+    <Window.Resources>
+
+        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#EAF2FF"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="#EAF2FF"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#111827"/>
+
+        <Style TargetType="Button">
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="Padding" Value="14,0"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Background" Value="#2563EB"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+
+        <Style TargetType="ComboBox">
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style TargetType="TextBox">
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="Padding" Value="6,0"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style TargetType="RadioButton">
+            <Setter Property="Margin" Value="0,7,0,0"/>
+        </Style>
+
+        <Style TargetType="CheckBox">
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <Style TargetType="DataGridCell">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="4,0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style TargetType="DataGridColumnHeader">
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+
+        <Style TargetType="DataGridRow">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Background" Value="White"/>
+            <Style.Triggers>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="#EAF2FF"/>
+                    <Setter Property="Foreground" Value="#111827"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="CenterTextBlockStyle" TargetType="TextBlock">
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="TextAlignment" Value="Center"/>
+            <Setter Property="TextWrapping" Value="NoWrap"/>
+        </Style>
+
+    </Window.Resources>
+
+    <Grid Margin="22">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0"
+                Background="#111827"
+                CornerRadius="16"
+                Padding="24"
+                Margin="0,0,0,18">
+
+            <StackPanel>
+                <TextBlock Text="BIM Workset Manager"
+                           Foreground="White"
+                           FontSize="28"
+                           FontWeight="Bold"/>
+
+                <TextBlock Text="Zone mode: Scope Box → one workset. Rules mode: family/type/system rows → selected worksets."
+                           Foreground="#CBD5E1"
+                           FontSize="13"
+                           Margin="0,6,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="380"/>
+                <ColumnDefinition Width="20"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0"
+                    Background="White"
+                    CornerRadius="16"
+                    Padding="18"
+                    BorderBrush="#E5E7EB"
+                    BorderThickness="1">
+
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+
+                        <TextBlock Text="1. Workflow"
+                                   FontSize="18"
+                                   FontWeight="Bold"
+                                   Margin="0,0,0,10"/>
+
+                        <RadioButton x:Name="workflowZoneRadio"
+                                     Content="Zone / Scope Box mode"
+                                     Checked="workflow_changed"/>
+
+                        <RadioButton x:Name="workflowRulesRadio"
+                                     Content="Family / Type rules mode"
+                                     Checked="workflow_changed"/>
+
+                        <Border x:Name="zonePanel"
+                                Background="#F9FAFB"
+                                BorderBrush="#E5E7EB"
+                                BorderThickness="1"
+                                CornerRadius="12"
+                                Padding="14"
+                                Margin="0,18,0,0">
+
+                            <StackPanel>
+                                <TextBlock Text="2. Zone / Scope Box"
+                                           FontSize="18"
+                                           FontWeight="Bold"
+                                           Margin="0,0,0,10"/>
+
+                                <TextBlock Text="Scope Box / Zone"
+                                           FontWeight="SemiBold"
+                                           Margin="0,0,0,6"/>
+
+                                <ComboBox x:Name="scopeBoxCombo"/>
+
+                                <TextBlock Text="Move all elements inside to workset"
+                                           FontWeight="SemiBold"
+                                           Margin="0,16,0,6"/>
+
+                                <ComboBox x:Name="zoneTargetWorksetCombo"/>
+
+                                <TextBlock TextWrapping="Wrap"
+                                           Foreground="#4B5563"
+                                           Margin="0,14,0,0"
+                                           Text="Example: select Zone A and target workset Zone A. Only elements whose bounding box center is inside that Scope Box will be processed."/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border x:Name="rulesSourcePanel"
+                                Background="#F9FAFB"
+                                BorderBrush="#E5E7EB"
+                                BorderThickness="1"
+                                CornerRadius="12"
+                                Padding="14"
+                                Margin="0,18,0,0">
+
+                            <StackPanel>
+                                <TextBlock Text="2. Source for Rules"
+                                           FontSize="18"
+                                           FontWeight="Bold"
+                                           Margin="0,0,0,10"/>
+
+                                <RadioButton x:Name="sourceSelectionRadio"
+                                             Content="Use current Revit selection"/>
+
+                                <RadioButton x:Name="sourceCurrentViewRadio"
+                                             Content="Use current active view"/>
+
+                                <TextBlock x:Name="currentViewText"
+                                           Foreground="#6B7280"
+                                           FontSize="11"
+                                           Margin="18,4,0,0"
+                                           Text="Current view"/>
+
+                                <RadioButton x:Name="sourceSelectedViewRadio"
+                                             Content="Use selected plan / view"/>
+
+                                <TextBlock Text="Selected Plan / View"
+                                           FontWeight="SemiBold"
+                                           Margin="0,14,0,6"/>
+
+                                <ComboBox x:Name="selectedViewCombo"/>
+
+                                <Button Content="Refresh Family / Type Rows"
+                                        Margin="0,18,0,0"
+                                        Click="refresh_rows_click"/>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="3. Safety"
+                                   FontSize="18"
+                                   FontWeight="Bold"
+                                   Margin="0,24,0,10"/>
+
+                        <CheckBox x:Name="reportOnlyCheckBox"
+                                  Content="Report only - do not move elements"
+                                  HorizontalAlignment="Left"
+                                  IsChecked="True"/>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <Border Grid.Column="2"
+                    Background="White"
+                    CornerRadius="16"
+                    Padding="18"
+                    BorderBrush="#E5E7EB"
+                    BorderThickness="1">
+
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Margin="0,0,0,14">
+                        <TextBlock x:Name="mappingInfoText"
+                                   Text="Family / Type / System Workset Mapping"
+                                   FontSize="20"
+                                   FontWeight="Bold"/>
+
+                        <TextBlock x:Name="mappingHelpText"
+                                   Text="Filter by Category or System Name, tick rows with one click, then choose Target Workset."
+                                   Foreground="#6B7280"
+                                   FontSize="12"
+                                   Margin="0,4,0,0"/>
+                    </StackPanel>
+
+                    <Grid x:Name="filterPanel" Grid.Row="1" Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="180"/>
+                            <ColumnDefinition Width="10"/>
+                            <ColumnDefinition Width="180"/>
+                            <ColumnDefinition Width="10"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <ComboBox x:Name="categoryFilterCombo"
+                                  Grid.Column="0"
+                                  ToolTip="Filter Category"/>
+
+                        <ComboBox x:Name="systemFilterCombo"
+                                  Grid.Column="2"
+                                  ToolTip="Filter System Name"/>
+
+                        <Button Grid.Column="4"
+                                Content="Apply Filter"
+                                Width="105"
+                                Margin="0,0,8,0"
+                                Click="apply_filter_click"/>
+
+                        <Button Grid.Column="5"
+                                Content="Clear Filter"
+                                Width="105"
+                                Background="#6B7280"
+                                Click="clear_filter_click"/>
+
+                        <Button Grid.Column="7"
+                                Content="Check All"
+                                Width="100"
+                                Margin="0,0,8,0"
+                                Background="#10B981"
+                                Click="check_all_click"/>
+
+                        <Button Grid.Column="8"
+                                Content="Uncheck All"
+                                Width="110"
+                                Background="#6B7280"
+                                Click="uncheck_all_click"/>
+                    </Grid>
+
+                    <Grid x:Name="rulesPanel" Grid.Row="2">
+                        <DataGrid x:Name="rowsGrid"
+                                  AutoGenerateColumns="False"
+                                  CanUserAddRows="False"
+                                  CanUserDeleteRows="False"
+                                  HeadersVisibility="Column"
+                                  GridLinesVisibility="Horizontal"
+                                  HorizontalGridLinesBrush="#E5E7EB"
+                                  VerticalGridLinesBrush="#E5E7EB"
+                                  Background="White"
+                                  BorderBrush="#E5E7EB"
+                                  BorderThickness="1"
+                                  RowHeight="34"
+                                  SelectionUnit="FullRow"
+                                  SelectionMode="Extended"
+                                  FocusVisualStyle="{x:Null}">
+
+                            <DataGrid.Columns>
+
+                                <DataGridTemplateColumn Header="Use" Width="55">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <CheckBox IsChecked="{Binding Enabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+
+                                <DataGridTextColumn Header="Category"
+                                                    Binding="{Binding Category}"
+                                                    Width="150"
+                                                    IsReadOnly="True"
+                                                    ElementStyle="{StaticResource CenterTextBlockStyle}"/>
+
+                                <DataGridTextColumn Header="Family"
+                                                    Binding="{Binding Family}"
+                                                    Width="230"
+                                                    IsReadOnly="True"
+                                                    ElementStyle="{StaticResource CenterTextBlockStyle}"/>
+
+                                <DataGridTextColumn Header="Type"
+                                                    Binding="{Binding TypeName}"
+                                                    Width="250"
+                                                    IsReadOnly="True"
+                                                    ElementStyle="{StaticResource CenterTextBlockStyle}"/>
+
+                                <DataGridTextColumn Header="System Name"
+                                                    Binding="{Binding SystemName}"
+                                                    Width="170"
+                                                    IsReadOnly="True"
+                                                    ElementStyle="{StaticResource CenterTextBlockStyle}"/>
+
+                                <DataGridTextColumn Header="Current Workset(s)"
+                                                    Binding="{Binding CurrentWorksets}"
+                                                    Width="180"
+                                                    IsReadOnly="True"
+                                                    ElementStyle="{StaticResource CenterTextBlockStyle}"/>
+
+                                <DataGridTextColumn Header="Count"
+                                                    Binding="{Binding Count}"
+                                                    Width="65"
+                                                    IsReadOnly="True"
+                                                    ElementStyle="{StaticResource CenterTextBlockStyle}"/>
+
+                                <DataGridTextColumn Header="Contains Text"
+                                                    Binding="{Binding ContainsText}"
+                                                    Width="130"
+                                                    ElementStyle="{StaticResource CenterTextBlockStyle}"/>
+
+                                <DataGridTemplateColumn Header="Target Workset" Width="230">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <ComboBox
+                                                ItemsSource="{Binding DataContext.WorksetNames, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                SelectedItem="{Binding TargetWorkset, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                IsSynchronizedWithCurrentItem="False"
+                                                HorizontalContentAlignment="Center"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Grid>
+
+                    <Border Grid.Row="3"
+                            Background="#F9FAFB"
+                            BorderBrush="#E5E7EB"
+                            BorderThickness="1"
+                            CornerRadius="12"
+                            Padding="12"
+                            Margin="0,14,0,0">
+
+                        <TextBlock TextWrapping="Wrap"
+                                   Foreground="#4B5563"
+                                   Text="Rules mode example: filter Category = Sprinklers, tick dry rows and set Sprinkler_dry. Filter Category = Pipes and set Sprinkler_pipe."/>
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <Grid Grid.Row="2" Margin="0,18,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0">
+                <TextBlock x:Name="sourceNameText"
+                           Foreground="#111827"
+                           FontWeight="SemiBold"
+                           Text="Source: Not selected"/>
+
+                <TextBlock x:Name="statusText"
+                           Foreground="#4B5563"
+                           Margin="0,4,0,0"
+                           Text="Ready"/>
+            </StackPanel>
+
+            <Button Grid.Column="1"
+                    Content="Run"
+                    Width="130"
+                    Margin="0,0,12,0"
+                    Click="run_click"/>
+
+            <Button Grid.Column="2"
+                    Content="Close"
+                    Width="130"
+                    Background="#6B7280"
+                    Click="close_click"/>
+        </Grid>
+    </Grid>
+</Window>
