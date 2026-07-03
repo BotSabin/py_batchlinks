@@ -33,6 +33,16 @@
             <Setter Property="BorderBrush" Value="#D0D7DE"/>
             <Setter Property="BorderThickness" Value="1"/>
         </Style>
+
+        <Style TargetType="ComboBox">
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
     </Window.Resources>
 
     <Grid>
@@ -52,9 +62,6 @@
                 <Button Content="All Links" Click="show_all_links"/>
                 <Button Content="RVT Links" Style="{StaticResource SecondaryButton}" Click="show_rvt_links"/>
                 <Button Content="IFC Links" Style="{StaticResource SecondaryButton}" Click="show_ifc_links"/>
-                <Button Content="CAD Links" Style="{StaticResource SecondaryButton}" Click="show_cad_links"/>
-                <Button Content="Point Clouds" Style="{StaticResource SecondaryButton}" Click="show_pointcloud_links"/>
-                <Button Content="NWC / NWD" Style="{StaticResource SecondaryButton}" Click="show_nwc_links"/>
 
                 <Separator Margin="0,24,0,24"/>
 
@@ -63,6 +70,20 @@
                 <CheckBox x:Name="chkRelativePath" Content="Relative path" IsChecked="True" Foreground="White" Margin="4,6"/>
                 <CheckBox x:Name="chkReplaceExisting" Content="Replace existing" Foreground="White" Margin="4,6"/>
                 <CheckBox x:Name="chkRebuildIFC" Content="Rebuild IFC cache" Foreground="White" Margin="4,6"/>
+
+                <TextBlock Text="WORKSET FOR NEW LINKS"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center"
+                           Foreground="#90A4AE"
+                           FontSize="11"
+                           FontWeight="Bold"
+                           Margin="0,18,0,8"/>
+
+                <ComboBox x:Name="cmbNewLinkWorkset"
+                          Height="34"
+                          Margin="4,0,4,8"
+                          HorizontalContentAlignment="Center"
+                          VerticalContentAlignment="Center"/>
             </StackPanel>
         </Border>
 
@@ -94,7 +115,23 @@
             </Grid>
 
             <Border Grid.Row="2" Background="White" BorderBrush="#D0D7DE" BorderThickness="1">
-                <ListView x:Name="lvLinks" BorderThickness="0" SelectionChanged="link_selected">
+                <ListView x:Name="lvLinks"
+                          BorderThickness="0"
+                          SelectionChanged="link_selected"
+                          PreviewMouseRightButtonDown="lv_preview_right_click">
+
+                    <ListView.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="Reload" Click="ctx_reload"/>
+                            <MenuItem Header="Reload From..." Click="ctx_reload_from"/>
+                            <Separator/>
+                            <MenuItem Header="Unload For Me" Click="ctx_unload_me"/>
+                            <MenuItem Header="Unload For All" Click="ctx_unload_all"/>
+                            <Separator/>
+                            <MenuItem Header="Remove" Click="ctx_remove"/>
+                        </ContextMenu>
+                    </ListView.ContextMenu>
+
                     <ListView.View>
                         <GridView>
                             <GridViewColumn Width="42">
@@ -107,7 +144,7 @@
 
                             <GridViewColumn Header="Model Name" Width="320" DisplayMemberBinding="{Binding name}"/>
                             <GridViewColumn Header="Type" Width="60" DisplayMemberBinding="{Binding link_kind}"/>
-                            <GridViewColumn Header="Size" Width="85" DisplayMemberBinding="{Binding size}"/>
+                            <GridViewColumn Header="Revit Size" Width="90" DisplayMemberBinding="{Binding size}"/>
                             <GridViewColumn Header="Status" Width="85" DisplayMemberBinding="{Binding status}"/>
                             <GridViewColumn Header="Path" Width="360" DisplayMemberBinding="{Binding path}"/>
                             <GridViewColumn Header="Id" Width="65" DisplayMemberBinding="{Binding typeid}"/>
@@ -128,9 +165,6 @@
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="16,0,0,0">
-                    <Button Content="Reload" Width="105" Click="reload_selected"/>
-                    <Button x:Name="btnUnloadForMe" Content="Unload Me" Width="110" Style="{StaticResource SecondaryButton}" Click="unload_for_me"/>
-                    <Button Content="Unload All" Width="110" Style="{StaticResource SecondaryButton}" Click="unload_for_all"/>
                     <Button Content="Cancel" Width="90" Background="#D32F2F" Click="cancel_process"/>
                 </StackPanel>
             </Grid>
@@ -157,25 +191,39 @@
                 <TextBlock Text="Selected Link" FontWeight="Bold" Margin="0,18,0,4"/>
                 <TextBox x:Name="txtSelectedName" IsReadOnly="True"/>
 
-                <TextBlock Text="Selected Size" FontWeight="Bold" Margin="0,12,0,4"/>
+                <TextBlock Text="Current Workset" FontWeight="Bold" Margin="0,12,0,4"/>
+                <TextBox x:Name="txtSelectedWorkset" IsReadOnly="True"/>
+
+                <TextBlock Text="Move To Workset" FontWeight="Bold" Margin="0,12,0,4"/>
+                <ComboBox x:Name="cmbCurrentWorkset"
+                          Height="32"
+                          Margin="0,4,0,8"
+                          HorizontalContentAlignment="Center"
+                          VerticalContentAlignment="Center"/>
+
+                <Button x:Name="btnMoveWorkset"
+                        Content="Move Selected Link"
+                        Click="move_selected_link_workset"
+                        Margin="0,0,0,12"/>
+
+                <TextBlock Text="Source Size" FontWeight="Bold" Margin="0,12,0,4"/>
                 <TextBox x:Name="txtSelectedSize" IsReadOnly="True"/>
+
+                <TextBlock Text="Revit Cache Size" FontWeight="Bold" Margin="0,12,0,4"/>
+                <TextBox x:Name="txtSelectedCacheSize" IsReadOnly="True"/>
 
                 <TextBlock Text="Full Path" FontWeight="Bold" Margin="0,12,0,4"/>
                 <TextBox x:Name="txtSelectedPath"
-                         Height="110"
+                         Height="100"
                          TextWrapping="Wrap"
                          IsReadOnly="True"
                          VerticalScrollBarVisibility="Auto"/>
 
-                <Button Content="Copy Path" Margin="0,8,0,12" Click="copy_selected_path"/>
-
-                <TextBlock Text="IFC Cache"/>
-                <TextBlock Text="First load converts IFC. Later loads reuse cache unless rebuild is checked."
+                <TextBlock Text="IFC Cache" Margin="0,14,0,0"/>
+                <TextBlock Text="For IFC links, Revit Size shows the .ifc.RVT cache. Source Size shows the original IFC file size."
                            TextWrapping="Wrap"
                            Foreground="#607D8B"
                            Margin="0,4,0,18"/>
-
-                <Button Content="Apply Settings" Click="apply_settings"/>
             </StackPanel>
         </Border>
     </Grid>

@@ -6,6 +6,8 @@ from Autodesk.Revit.DB import *
 from Microsoft.Win32 import OpenFileDialog
 from System.Collections.Generic import Dictionary
 from System import String
+from System.Windows.Media import VisualTreeHelper
+from System.Windows.Controls import ListViewItem
 import os
 import clr
 import System
@@ -54,20 +56,40 @@ def load_ifc_engine():
 
 def resolve_path(path):
     if not path:
-        return ""
+        return "Unknown"
 
     path = path.strip()
 
     if os.path.isabs(path):
         return path
 
+    candidates = []
+
     try:
         host_path = doc.PathName
         if host_path:
             host_dir = os.path.dirname(host_path)
-            return os.path.abspath(os.path.join(host_dir, path))
+            candidates.append(os.path.abspath(os.path.join(host_dir, path)))
     except:
         pass
+
+    try:
+        user_home = os.path.expanduser("~")
+        candidates.append(os.path.abspath(os.path.join(user_home, path)))
+        candidates.append(os.path.abspath(os.path.join(user_home, path.replace("..\\", ""))))
+        candidates.append(os.path.abspath(os.path.join(user_home, "Downloads", os.path.basename(path))))
+        candidates.append(os.path.abspath(os.path.join(user_home, "Documents", os.path.basename(path))))
+    except:
+        pass
+
+    candidates.append(path)
+
+    for c in candidates:
+        try:
+            if c and os.path.exists(c):
+                return c
+        except:
+            pass
 
     return path
 
@@ -82,10 +104,14 @@ class LinkRow(object):
         self.status = self.get_status()
         self.typeid = self.link_type.Id.IntegerValue
         self.link_kind = self.get_kind()
+        self.workset_name = self.get_workset_name()
 
         self.path = self.get_path()
         self.full_path = resolve_path(self.path)
-        self.size = self.get_size()
+
+        self.source_size = self.get_source_size()
+        self.cache_size = self.get_cache_size()
+        self.size = self.cache_size if self.link_kind == "IFC" else self.source_size
 
     def get_name(self):
         try:
@@ -110,6 +136,19 @@ class LinkRow(object):
         if ".ifc" in self.name.lower():
             return "IFC"
         return "RVT"
+
+    def get_workset_name(self):
+        try:
+            p = self.instance.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM)
+            if p:
+                ws_id = WorksetId(p.AsInteger())
+                ws = doc.GetWorksetTable().GetWorkset(ws_id)
+                if ws:
+                    return ws.Name
+        except:
+            pass
+
+        return "Unknown"
 
     def get_path(self):
         paths = []
@@ -137,22 +176,79 @@ class LinkRow(object):
 
         return "Unknown"
 
-    def get_size(self):
-        paths_to_try = []
+    def get_ifc_source_path(self):
+        path = self.full_path
 
-        if self.full_path and self.full_path != "Unknown":
-            paths_to_try.append(self.full_path)
+        if path and path != "Unknown" and path.lower().endswith(".ifc"):
+            return path
 
-            if self.full_path.lower().endswith(".ifc"):
-                paths_to_try.append(self.full_path + ".RVT")
-                paths_to_try.append(self.full_path + ".rvt")
+        if path and path.lower().endswith(".ifc.rvt"):
+            possible = path[:-4]
+            if os.path.exists(possible):
+                return possible
 
-        for p in paths_to_try:
-            try:
-                if p and os.path.exists(p):
-                    return self.format_size(os.path.getsize(p))
-            except:
-                pass
+        filename = self.name
+        if not filename.lower().endswith(".ifc"):
+            filename = filename + ".ifc"
+
+        roots = [
+            os.path.expanduser("~/Downloads"),
+            os.path.expanduser("~/Documents")
+        ]
+
+        for root in roots:
+            candidate = os.path.join(root, filename)
+            if os.path.exists(candidate):
+                return candidate
+
+        return "Unknown"
+
+    def get_ifc_cache_path(self):
+        source = self.get_ifc_source_path()
+
+        if source and source != "Unknown":
+            cache = source + ".RVT"
+            if os.path.exists(cache):
+                return cache
+
+            cache = source + ".rvt"
+            if os.path.exists(cache):
+                return cache
+
+        path = self.full_path
+        if path and path != "Unknown" and path.lower().endswith(".rvt"):
+            return path
+
+        return "Unknown"
+
+    def get_source_size(self):
+        try:
+            if self.link_kind == "IFC":
+                source = self.get_ifc_source_path()
+                if source != "Unknown" and os.path.exists(source):
+                    return self.format_size(os.path.getsize(source))
+                return "Unknown"
+
+            if self.full_path and self.full_path != "Unknown" and os.path.exists(self.full_path):
+                return self.format_size(os.path.getsize(self.full_path))
+
+        except Exception as ex:
+            output.print_md("Source size read error: {}".format(ex))
+
+        return "Unknown"
+
+    def get_cache_size(self):
+        try:
+            if self.link_kind == "IFC":
+                cache = self.get_ifc_cache_path()
+                if cache != "Unknown" and os.path.exists(cache):
+                    return self.format_size(os.path.getsize(cache))
+                return "Unknown"
+
+            return self.source_size
+
+        except Exception as ex:
+            output.print_md("Cache size read error: {}".format(ex))
 
         return "Unknown"
 
@@ -181,15 +277,149 @@ class LinkManagerWindow(WPFWindow):
         self.cancel_requested = False
         self.current_filter = "ALL"
 
+        self.populate_workset_combos()
         self.load_settings()
         self.reload_ui_rows()
 
-        if not doc.IsWorkshared:
+        try:
+            self.Closing += self.window_closing
+        except:
+            pass
+
+    def window_closing(self, sender, args):
+        save_json_settings(self.collect_settings())
+
+    def populate_workset_combos(self):
+        try:
+            self.cmbNewLinkWorkset.Items.Clear()
+            self.cmbCurrentWorkset.Items.Clear()
+
+            if not doc.IsWorkshared:
+                self.cmbNewLinkWorkset.Items.Add("Not Workshared")
+                self.cmbCurrentWorkset.Items.Add("Not Workshared")
+
+                self.cmbNewLinkWorkset.SelectedIndex = 0
+                self.cmbCurrentWorkset.SelectedIndex = 0
+
+                self.cmbNewLinkWorkset.IsEnabled = False
+                self.cmbCurrentWorkset.IsEnabled = False
+                self.btnMoveWorkset.IsEnabled = False
+                return
+
+            first_index = -1
+            index = 0
+
+            for ws in FilteredWorksetCollector(doc).OfKind(WorksetKind.UserWorkset):
+                self.cmbNewLinkWorkset.Items.Add(ws.Name)
+                self.cmbCurrentWorkset.Items.Add(ws.Name)
+
+                if ws.Name.upper() in ["LINKS", "RVT LINKS", "IFC LINKS"]:
+                    if first_index == -1:
+                        first_index = index
+
+                index += 1
+
+            if self.cmbNewLinkWorkset.Items.Count > 0:
+                self.cmbNewLinkWorkset.SelectedIndex = first_index if first_index >= 0 else 0
+
+            if self.cmbCurrentWorkset.Items.Count > 0:
+                self.cmbCurrentWorkset.SelectedIndex = 0
+
+        except Exception as ex:
+            output.print_md("Workset combo failed: {}".format(ex))
+
+    def get_selected_new_link_workset_name(self):
+        try:
+            if self.cmbNewLinkWorkset.SelectedItem:
+                return str(self.cmbNewLinkWorkset.SelectedItem)
+        except:
+            pass
+        return ""
+
+    def get_selected_current_workset_name(self):
+        try:
+            if self.cmbCurrentWorkset.SelectedItem:
+                return str(self.cmbCurrentWorkset.SelectedItem)
+        except:
+            pass
+        return ""
+
+    def select_current_workset_combo(self, workset_name):
+        try:
+            for i in range(self.cmbCurrentWorkset.Items.Count):
+                if str(self.cmbCurrentWorkset.Items[i]) == workset_name:
+                    self.cmbCurrentWorkset.SelectedIndex = i
+                    return
+        except:
+            pass
+
+    def find_workset_by_name(self, name):
+        if not doc.IsWorkshared or not name:
+            return None
+
+        try:
+            for ws in FilteredWorksetCollector(doc).OfKind(WorksetKind.UserWorkset):
+                if ws.Name == name:
+                    return ws
+        except:
+            pass
+
+        return None
+
+    def set_instance_workset(self, inst, workset_name=None):
+        if not doc.IsWorkshared or inst is None:
+            return
+
+        if not workset_name:
+            workset_name = self.get_selected_new_link_workset_name()
+
+        ws = self.find_workset_by_name(workset_name)
+
+        if not ws:
+            return
+
+        try:
+            p = inst.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM)
+
+            if p and not p.IsReadOnly:
+                p.Set(ws.Id.IntegerValue)
+                output.print_md("Placed link on workset: **{}**".format(ws.Name))
+
+        except Exception as ex:
+            output.print_md("Could not set link workset: {}".format(ex))
+
+    def move_selected_link_workset(self, sender, args):
+        row = self.lvLinks.SelectedItem
+
+        if not row:
+            forms.alert("Select one link first.")
+            return
+
+        target_ws_name = self.get_selected_current_workset_name()
+
+        if not target_ws_name or target_ws_name == "Not Workshared":
+            forms.alert("Select a valid workset.")
+            return
+
+        t = Transaction(doc, "Move Link To Workset")
+
+        try:
+            t.Start()
+            self.set_instance_workset(row.instance, target_ws_name)
+            t.Commit()
+
+            output.print_md("Moved link **{}** to workset **{}**".format(row.name, target_ws_name))
+
+        except Exception as ex:
             try:
-                self.btnUnloadForMe.IsEnabled = False
-                self.btnUnloadForMe.ToolTip = "Unload For Me is only available in workshared models."
+                if t.HasStarted():
+                    t.RollBack()
             except:
                 pass
+
+            output.print_md("Move workset failed: {}".format(ex))
+
+        self.reload_ui_rows()
 
     def load_settings(self):
         data = load_json_settings()
@@ -208,19 +438,25 @@ class LinkManagerWindow(WPFWindow):
         except:
             self.cmbPositioning.SelectedIndex = 0
 
+        saved_ws = data.get("new_link_workset", "")
+        try:
+            if saved_ws:
+                for i in range(self.cmbNewLinkWorkset.Items.Count):
+                    if str(self.cmbNewLinkWorkset.Items[i]) == saved_ws:
+                        self.cmbNewLinkWorkset.SelectedIndex = i
+                        break
+        except:
+            pass
+
     def collect_settings(self):
         return {
             "relative_path": bool(self.chkRelativePath.IsChecked),
             "replace_existing": bool(self.chkReplaceExisting.IsChecked),
             "rebuild_ifc_cache": bool(self.chkRebuildIFC.IsChecked),
             "reference_type_index": int(self.cmbReferenceType.SelectedIndex),
-            "positioning_index": int(self.cmbPositioning.SelectedIndex)
+            "positioning_index": int(self.cmbPositioning.SelectedIndex),
+            "new_link_workset": self.get_selected_new_link_workset_name()
         }
-
-    def apply_settings(self, sender, args):
-        if save_json_settings(self.collect_settings()):
-            self.set_status("Settings saved.")
-            forms.alert("Settings saved.")
 
     def set_status(self, text):
         self.txtStatus.Text = text
@@ -239,28 +475,161 @@ class LinkManagerWindow(WPFWindow):
         self.cancel_requested = True
         self.set_status("Cancel requested...")
 
+    def lv_preview_right_click(self, sender, args):
+        try:
+            item = args.OriginalSource
+            while item is not None and not isinstance(item, ListViewItem):
+                item = VisualTreeHelper.GetParent(item)
+
+            if item is not None:
+                item.IsSelected = True
+                item.Focus()
+        except:
+            pass
+
     def link_selected(self, sender, args):
         try:
             row = self.lvLinks.SelectedItem
             if row:
                 self.txtSelectedPath.Text = row.full_path
-                self.txtSelectedSize.Text = row.size
+                self.txtSelectedSize.Text = row.source_size
+                self.txtSelectedCacheSize.Text = row.cache_size
                 self.txtSelectedName.Text = row.name
+                self.txtSelectedWorkset.Text = row.workset_name
+                self.select_current_workset_combo(row.workset_name)
             else:
                 self.txtSelectedPath.Text = ""
                 self.txtSelectedSize.Text = ""
+                self.txtSelectedCacheSize.Text = ""
                 self.txtSelectedName.Text = ""
+                self.txtSelectedWorkset.Text = ""
         except:
             pass
 
-    def copy_selected_path(self, sender, args):
+    def get_context_rows(self):
+        checked = [r for r in self.rows if r.checked]
+
+        if checked:
+            return checked
+
         try:
-            row = self.lvLinks.SelectedItem
-            if row:
-                System.Windows.Clipboard.SetText(row.full_path)
-                self.set_status("Path copied.")
+            selected = self.lvLinks.SelectedItem
+            if selected:
+                return [selected]
+        except:
+            pass
+
+        return []
+
+    def ctx_reload(self, sender, args):
+        self.run_action("reload")
+
+    def ctx_reload_from(self, sender, args):
+        rows = self.get_context_rows()
+
+        if not rows:
+            forms.alert("Select at least one link.")
+            return
+
+        if len(rows) > 1:
+            forms.alert("Reload From works with one selected link at a time.")
+            return
+
+        row = rows[0]
+
+        dialog = OpenFileDialog()
+        dialog.Title = "Reload From"
+        dialog.Filter = "RVT & IFC (*.rvt;*.ifc)|*.rvt;*.ifc|RVT (*.rvt)|*.rvt|IFC (*.ifc)|*.ifc"
+        dialog.Multiselect = False
+
+        if dialog.ShowDialog() != True:
+            return
+
+        filepath = dialog.FileName
+        ext = os.path.splitext(filepath)[1].lower()
+
+        try:
+            if ext == ".rvt":
+                model_path = ModelPathUtils.ConvertUserVisiblePathToModelPath(filepath)
+
+                try:
+                    wc = WorksetConfiguration()
+                    row.link_type.LoadFrom(model_path, wc)
+                    output.print_md("Reloaded from RVT: **{}**".format(filepath))
+                except Exception as ex:
+                    output.print_md("Direct Reload From failed, replacing link instead: {}".format(ex))
+                    if self.delete_link_type(row.link_type):
+                        self.link_rvt(filepath)
+
+            elif ext == ".ifc":
+                output.print_md("Reload From IFC will replace the existing IFC link.")
+                if self.delete_link_type(row.link_type):
+                    self.link_ifc(filepath)
+
+            else:
+                forms.alert("Unsupported file type.")
+
         except Exception as ex:
-            forms.alert("Could not copy path: {}".format(ex))
+            output.print_md("Reload From failed: {}".format(ex))
+
+        self.reload_ui_rows()
+
+    def ctx_unload_me(self, sender, args):
+        self.run_action("unload_me")
+
+    def ctx_unload_all(self, sender, args):
+        self.run_action("unload_all")
+
+    def ctx_remove(self, sender, args):
+        rows = self.get_context_rows()
+
+        if not rows:
+            forms.alert("Select at least one link.")
+            return
+
+        confirm = forms.alert("Remove selected link(s) completely from the project?", yes=True, no=True)
+
+        if not confirm:
+            return
+
+        link_data = []
+        seen = []
+
+        for r in rows:
+            try:
+                type_id = r.link_type.Id
+                type_int = type_id.IntegerValue
+
+                if type_int not in seen:
+                    seen.append(type_int)
+                    link_data.append((type_id, r.name))
+            except:
+                pass
+
+        t = Transaction(doc, "Remove Links")
+
+        try:
+            t.Start()
+
+            for type_id, name in link_data:
+                try:
+                    doc.Delete(type_id)
+                    output.print_md("Removed completely: **{}**".format(name))
+                except Exception as ex:
+                    output.print_md("Could not remove **{}**: {}".format(name, ex))
+
+            t.Commit()
+
+        except Exception as ex:
+            try:
+                if t.HasStarted():
+                    t.RollBack()
+            except:
+                pass
+            output.print_md("Remove failed: {}".format(ex))
+
+        self.reload_ui_rows()
+        self.lvLinks.Items.Refresh()
 
     def refresh_grid(self, rows):
         self.rows = rows
@@ -300,21 +669,13 @@ class LinkManagerWindow(WPFWindow):
         self.current_filter = "IFC"
         self.apply_filter_and_search()
 
-    def show_cad_links(self, sender, args):
-        forms.alert("CAD Links support coming in v3.2.")
-
-    def show_pointcloud_links(self, sender, args):
-        forms.alert("Point Cloud support coming in v3.2.")
-
-    def show_nwc_links(self, sender, args):
-        forms.alert("NWC/NWD support coming in v3.2.")
-
     def load_links(self, sender, args):
+        save_json_settings(self.collect_settings())
         self.cancel_requested = False
 
         dialog = OpenFileDialog()
         dialog.Title = "Select RVT or IFC files"
-        dialog.Filter = "RVT & IFC (*.rvt;*.ifc)|*.rvt;*.ifc|RVT (*.rvt)|*.rvt|IFC (*.ifc)|*.ifc"
+        dialog.Filter = "RVT (*.rvt)|*.rvt|IFC (*.ifc)|*.ifc|RVT & IFC (*.rvt;*.ifc)|*.rvt;*.ifc"
         dialog.Multiselect = True
 
         if dialog.ShowDialog() != True:
@@ -358,11 +719,12 @@ class LinkManagerWindow(WPFWindow):
         return None
 
     def delete_link_type(self, link_type):
+        type_id = link_type.Id
         t = Transaction(doc, "Delete Existing Link")
 
         try:
             t.Start()
-            doc.Delete(link_type.Id)
+            doc.Delete(type_id)
             t.Commit()
             return True
         except Exception as ex:
@@ -398,10 +760,12 @@ class LinkManagerWindow(WPFWindow):
 
             relative = bool(self.chkRelativePath.IsChecked)
             options = RevitLinkOptions(relative)
-
             model_path = ModelPathUtils.ConvertUserVisiblePathToModelPath(filepath)
+
             result = RevitLinkType.Create(doc, model_path, options)
             inst = RevitLinkInstance.Create(doc, result.ElementId)
+
+            self.set_instance_workset(inst)
 
             t.Commit()
 
@@ -423,17 +787,34 @@ class LinkManagerWindow(WPFWindow):
         try:
             load_ifc_engine()
 
-            if self.chkRebuildIFC.IsChecked:
-                folder = os.path.dirname(filepath)
-                name = os.path.splitext(os.path.basename(filepath))[0]
-                cache_rvt = os.path.join(folder, name + ".ifc.RVT")
+            relative = bool(self.chkRelativePath.IsChecked)
+            recreate = bool(self.chkRebuildIFC.IsChecked)
 
-                if os.path.exists(cache_rvt):
-                    try:
-                        os.remove(cache_rvt)
-                        output.print_md("Deleted IFC cache: **{}**".format(cache_rvt))
-                    except Exception as ex:
-                        output.print_md("Could not delete IFC cache: **{}** -> {}".format(cache_rvt, ex))
+            ifc_path = filepath
+            cache_rvt = filepath + ".RVT"
+            options = RevitLinkOptions(relative)
+
+            try:
+                t = Transaction(doc, "Link IFC")
+                t.Start()
+
+                result = RevitLinkType.CreateFromIFC(doc, ifc_path, cache_rvt, recreate, options)
+
+                inst = RevitLinkInstance.Create(doc, result.ElementId)
+                self.set_instance_workset(inst)
+
+                t.Commit()
+
+                output.print_md("IFC linked with CreateFromIFC: **{}**".format(filepath))
+                return
+
+            except Exception as ex:
+                try:
+                    if t.HasStarted():
+                        t.RollBack()
+                except:
+                    pass
+                output.print_md("CreateFromIFC failed, trying IFC importer fallback: {}".format(ex))
 
             from Revit.IFC.Import import Importer
 
@@ -456,22 +837,13 @@ class LinkManagerWindow(WPFWindow):
 
             importer.ReferenceIFC(doc, filepath)
 
-            output.print_md("IFC linked using Revit IFC engine: **{}**".format(filepath))
+            output.print_md("IFC linked using importer fallback: **{}**".format(filepath))
 
         except Exception as ex:
             output.print_md("IFC failed: **{}** -> {}".format(filepath, ex))
 
-    def reload_selected(self, sender, args):
-        self.run_action("reload")
-
-    def unload_for_me(self, sender, args):
-        self.run_action("unload_me")
-
-    def unload_for_all(self, sender, args):
-        self.run_action("unload_all")
-
     def run_action(self, action):
-        selected = [r for r in self.rows if r.checked]
+        selected = self.get_context_rows()
 
         if not selected:
             forms.alert("Select at least one link.")
