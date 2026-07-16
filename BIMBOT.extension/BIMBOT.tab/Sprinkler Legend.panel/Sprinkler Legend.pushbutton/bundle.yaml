@@ -1,0 +1,5 @@
+title: Sprinkler Legend
+tooltip: >-
+  Generates a SYMBOL | TYPE | COUNT legend from unique model elements
+  visible in the views placed on the active sheet.
+author: Sabin / BIMBOT

@@ -1,8 +1,8 @@
 {
-    "new_link_workset": "Workset1", 
-    "positioning_index": 0, 
-    "rebuild_ifc_cache": false, 
+    "replace_existing": false, 
     "relative_path": true, 
+    "rebuild_ifc_cache": false, 
     "reference_type_index": 0, 
-    "replace_existing": false
+    "positioning_index": 0, 
+    "new_link_workset": "Workset1"
 }

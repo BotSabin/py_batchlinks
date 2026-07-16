@@ -18,11 +18,22 @@ from System.Collections.Generic import List
 uidoc = __revit__.ActiveUIDocument
 doc = uidoc.Document
 
+
 MIN_VOLUME = 0.0000001
 
 
 def msg(title, text):
     TaskDialog.Show(title, text)
+
+
+def eid_value(eid):
+    try:
+        return eid.IntegerValue
+    except:
+        try:
+            return eid.Value
+        except:
+            return -1
 
 
 def geometry_options():
@@ -35,12 +46,15 @@ def geometry_options():
 
 def is_good_solid(s):
     try:
-        return (
-            s and
-            s.Faces.Size > 0 and
-            s.Edges.Size > 0 and
-            abs(s.Volume) > MIN_VOLUME
-        )
+        if not s:
+            return False
+        if s.Faces.Size == 0:
+            return False
+        if s.Edges.Size == 0:
+            return False
+        if abs(s.Volume) < MIN_VOLUME:
+            return False
+        return True
     except:
         return False
 
@@ -51,46 +65,19 @@ def add_count(counter, name):
     counter[name] += 1
 
 
-def solid_signature(solid):
-    try:
-        bb = solid.GetBoundingBox()
-        return (
-            round(bb.Min.X, 6),
-            round(bb.Min.Y, 6),
-            round(bb.Min.Z, 6),
-            round(bb.Max.X, 6),
-            round(bb.Max.Y, 6),
-            round(bb.Max.Z, 6),
-            round(abs(solid.Volume), 8),
-            solid.Faces.Size,
-            solid.Edges.Size
-        )
-    except:
-        return None
-
-
-def collect_geometry(obj, trf, solids, meshes, curves, polylines, points, counter, solid_keys):
+def collect_geometry(obj, trf, solids, meshes, curves, polylines, points, counter):
     if obj is None:
         return
 
-    try:
-        typ = obj.GetType().FullName
-        add_count(counter, typ)
-    except:
-        pass
+    typ = obj.GetType().FullName
+    add_count(counter, typ)
 
     if isinstance(obj, Solid):
         if is_good_solid(obj):
             try:
-                transformed = SolidUtils.CreateTransformed(obj, trf)
+                solids.append(SolidUtils.CreateTransformed(obj, trf))
             except:
-                transformed = obj
-
-            key = solid_signature(transformed)
-
-            if key and key not in solid_keys:
-                solid_keys.add(key)
-                solids.append(transformed)
+                solids.append(obj)
         return
 
     if isinstance(obj, Mesh):
@@ -118,23 +105,17 @@ def collect_geometry(obj, trf, solids, meshes, curves, polylines, points, counte
         except:
             new_trf = trf
 
-        # IMPORTANT:
-        # Use InstanceGeometry only.
-        # Reading both InstanceGeometry and SymbolGeometry can duplicate CAD geometry.
         try:
             inst_geo = obj.GetInstanceGeometry()
             for g in inst_geo:
-                collect_geometry(
-                    g,
-                    new_trf,
-                    solids,
-                    meshes,
-                    curves,
-                    polylines,
-                    points,
-                    counter,
-                    solid_keys
-                )
+                collect_geometry(g, new_trf, solids, meshes, curves, polylines, points, counter)
+        except:
+            pass
+
+        try:
+            sym_geo = obj.GetSymbolGeometry()
+            for g in sym_geo:
+                collect_geometry(g, new_trf, solids, meshes, curves, polylines, points, counter)
         except:
             pass
 
@@ -142,17 +123,7 @@ def collect_geometry(obj, trf, solids, meshes, curves, polylines, points, counte
 
     if isinstance(obj, GeometryElement):
         for g in obj:
-            collect_geometry(
-                g,
-                trf,
-                solids,
-                meshes,
-                curves,
-                polylines,
-                points,
-                counter,
-                solid_keys
-            )
+            collect_geometry(g, trf, solids, meshes, curves, polylines, points, counter)
         return
 
 
@@ -163,7 +134,6 @@ def collect_from_element(el):
     polylines = []
     points = []
     counter = {}
-    solid_keys = set()
 
     try:
         geo = el.get_Geometry(geometry_options())
@@ -176,8 +146,7 @@ def collect_from_element(el):
                 curves,
                 polylines,
                 points,
-                counter,
-                solid_keys
+                counter
             )
     except:
         pass
@@ -193,7 +162,6 @@ def get_family_category_id():
                 return cat.Id
     except:
         pass
-
     return ElementId(BuiltInCategory.OST_GenericModel)
 
 
@@ -261,43 +229,73 @@ def create_mesh_directshape(meshes, name):
     return ds
 
 
-def get_target_element():
-    ref = uidoc.Selection.PickObject(
-        ObjectType.Element,
-        "Select ONE CAD / DWG / ImportInstance geometry to convert"
-    )
-    return doc.GetElement(ref.ElementId)
+def get_target_elements():
+    selected_ids = list(uidoc.Selection.GetElementIds())
+
+    if selected_ids:
+        return [doc.GetElement(x) for x in selected_ids if doc.GetElement(x)]
+
+    all_elements = []
+    collector = FilteredElementCollector(doc).WhereElementIsNotElementType()
+
+    for el in collector:
+        try:
+            if el.Category:
+                all_elements.append(el)
+        except:
+            pass
+
+    return all_elements
 
 
 try:
     if not doc.IsFamilyDocument:
         msg(
             "DWG To Family Solid",
-            "Open the RFA file in the Family Editor and run this tool there.\n\n"
-            "When executed inside a Revit project, the tool will create DirectShape geometry only, not an editable family."
+            "Deschide familia RFA în Family Editor și rulează scriptul acolo.\n\n"
+            "În Project va crea geometrie DirectShape, dar nu familie editabilă."
         )
 
-    source = get_target_element()
+    elements = get_target_elements()
 
-    if not source:
-        msg("DWG To Family Solid", "No valid source element was selected.")
+    if not elements:
+        msg("DWG To Family Solid", "Nu am găsit niciun element de analizat.")
         sys.exit()
 
-    solids, meshes, curves, polylines, points, counter = collect_from_element(source)
+    all_solids = []
+    all_meshes = []
+    all_curves = []
+    all_polylines = []
+    all_points = []
+    total_counter = {}
 
-    if not solids and not meshes:
+    for el in elements:
+        solids, meshes, curves, polylines, points, counter = collect_from_element(el)
+
+        all_solids.extend(solids)
+        all_meshes.extend(meshes)
+        all_curves.extend(curves)
+        all_polylines.extend(polylines)
+        all_points.extend(points)
+
+        for k in counter:
+            if k not in total_counter:
+                total_counter[k] = 0
+            total_counter[k] += counter[k]
+
+    if not all_solids and not all_meshes:
         report = []
-        report.append("No convertible Solid or Mesh geometry was found.")
+        report.append("Nu am găsit Solid sau Mesh convertibil.")
         report.append("")
-        report.append("Geometry detected by the Revit API:")
+        report.append("Ce a găsit Revit API în geometrie:")
         report.append("")
 
-        for k in sorted(counter.keys()):
-            report.append("{0} : {1}".format(k, counter[k]))
+        for k in sorted(total_counter.keys()):
+            report.append("{0} : {1}".format(k, total_counter[k]))
 
         report.append("")
-        report.append("If you see mostly PolyLine, Curve or Point objects, the DWG does not contain true 3D solids.")
-        report.append("If the geometry consists of AutoCAD Proxy/AEC objects, the Revit API cannot convert them into solids.")
+        report.append("Dacă vezi multe PolyLine / Curve / Point, acel DWG nu conține solid real.")
+        report.append("Dacă este Proxy/AEC object, Revit API nu îl poate transforma în solid.")
 
         msg("DWG To Family Solid - Report", "\n".join(report))
         sys.exit()
@@ -308,56 +306,38 @@ try:
     freeforms = []
     mesh_ds = None
 
-    if solids:
-        freeforms = create_freeforms(solids)
+    if all_solids:
+        freeforms = create_freeforms(all_solids)
 
-    if meshes:
+    if all_meshes:
         try:
-            mesh_ds = create_mesh_directshape(meshes, "Converted_DWG_Mesh")
+            mesh_ds = create_mesh_directshape(all_meshes, "Converted_DWG_Mesh")
         except:
             mesh_ds = None
 
     t.Commit()
 
     report = []
-    report.append("=========================================")
-    report.append("        BIMBOT DWG TO FAMILY REPORT")
-    report.append("=========================================")
+    report.append("Conversie terminată.")
     report.append("")
-    report.append("Source Analysis")
-    report.append("-----------------------------------------")
-    report.append("Selected source ID      : {0}".format(source.Id))
-    report.append("Solid bodies detected   : {0}".format(len(solids)))
-    report.append("Mesh objects detected   : {0}".format(len(meshes)))
-    report.append("Curves detected         : {0}".format(len(curves)))
-    report.append("Polylines detected      : {0}".format(len(polylines)))
-    report.append("Points detected         : {0}".format(len(points)))
+    report.append("Elemente analizate: {0}".format(len(elements)))
+    report.append("Solid-uri găsite: {0}".format(len(all_solids)))
+    report.append("Mesh-uri găsite: {0}".format(len(all_meshes)))
+    report.append("Curves găsite: {0}".format(len(all_curves)))
+    report.append("PolyLines găsite: {0}".format(len(all_polylines)))
+    report.append("Points găsite: {0}".format(len(all_points)))
     report.append("")
-    report.append("Generated Geometry")
-    report.append("-----------------------------------------")
-    report.append("FreeFormElements        : {0}".format(len(freeforms)))
-    report.append("DirectShape meshes      : {0}".format(1 if mesh_ds else 0))
+    report.append("FreeFormElement create: {0}".format(len(freeforms)))
+    report.append("DirectShape mesh creat: {0}".format(1 if mesh_ds else 0))
     report.append("")
-    report.append("Status")
-    report.append("-----------------------------------------")
 
     if len(freeforms) > 0:
-        report.append("Conversion completed successfully.")
-        report.append("Duplicate geometry prevention is enabled.")
-        report.append("Only InstanceGeometry was used, not SymbolGeometry.")
+        report.append("Solidurile au fost convertite în geometrie de familie.")
     else:
-        report.append("No FreeFormElements were created.")
-        report.append("The source geometry does not contain valid 3D solids.")
+        report.append("Nu s-a creat FreeFormElement. Geometria nu este solid real.")
 
     report.append("")
-    report.append("Notes")
-    report.append("-----------------------------------------")
-    report.append("The Height parameter is not created automatically.")
-    report.append("Imported geometry becomes fixed FreeForm geometry,")
-    report.append("not a native parametric Revit extrusion.")
-    report.append("")
-    report.append("You can delete the original CAD import after checking")
-    report.append("that the converted geometry looks correct.")
+    report.append("Important: parametrul Height nu apare automat. Geometria importată devine formă fixă, nu extrusion parametric.")
 
     msg("DWG To Family Solid", "\n".join(report))
 

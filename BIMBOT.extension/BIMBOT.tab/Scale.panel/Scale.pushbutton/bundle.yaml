@@ -1,0 +1,19 @@
+title:
+  en_us: Scale Key Plan
+
+tooltip:
+  en_us: >-
+    Uniformly scales native Symbolic Lines and Detail Lines inside
+    an open Revit family.
+
+    Run the tool in Family Editor, choose the geometry, enter a scale
+    factor and select the scale base point.
+
+    Text, labels, filled regions, images and nested families are not scaled.
+
+author: Sabin / BIMBOT
+
+context: doc-family
+
+engine:
+  clean: true
